@@ -54,15 +54,28 @@ proc checkLinksOnPage(address: Uri, base: Uri, original: Uri, recurse: bool, no_
       else:
         HttpGet
     if is_valid_scheme and (not is_external_page or (is_external_page and not no_external)):
-      echo "info: Checking " & $address 
-      var client = newHttpClient()
+      echo "info: Checking " & $address
+      var client: HttpClient = newHttpClient()
       client.headers = newHttpHeaders({"Accept": "text/html"})
-      let response = client.request($address, request_type)
-      LookupTable[$address] = response.code
-      parseCodeForLink(response.code, address, original)
-      if not is_external_page and response.headers["content-type"] == "text/html":
+      var response: Response
+      try:
+        response = client.request($address, request_type)
+      except:
+        response = nil
+      finally:
+        client.close()
+      LookupTable[$address] = if response != nil:
+                                response.code
+                              else:
+                                HttpCode(400)
+      parseCodeForLink(LookupTable[$address], address, original)
+      if not is_external_page and (response != nil and 
+                                   response.headers.hasKey("content-type") and 
+                                   response.headers["content-type"] == "text/html"):
         let page_content = parseHtml(response.body)
         for tag in page_content.findAll("a"):
+          if not tag.attrs.hasKey("href"):
+            continue
           var link = parseUri(tag.attrs["href"])
           if not link.isAbsolute():
             link.scheme = base.scheme
